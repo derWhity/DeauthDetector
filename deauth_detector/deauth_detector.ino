@@ -1,5 +1,7 @@
 #include <ESP8266WiFi.h>
 #include "Mac.h"
+#include "images.h"
+#include "SSD1306.h"
 
 extern "C" {
   #include "user_interface.h"
@@ -23,6 +25,9 @@ unsigned long prevTime = 0;
 unsigned long curTime = 0;
 int curChannel = channel;
 
+// OLED display
+SSD1306  display(0x3c, D1, D2);
+
 void sniffer(uint8_t *buf, uint16_t len) {
   //if(len>27){
     //from.set(buf[16],buf[17],buf[18],buf[19],buf[20],buf[21]);
@@ -43,17 +48,25 @@ void sniffer(uint8_t *buf, uint16_t len) {
 
 void setup() {
   Serial.begin(115200);
+  Serial.println("Starting wireless initialization");
 
+  //wifi_set_opmode(SOFTAP_MODE);
   wifi_set_opmode(STATION_MODE);
   wifi_promiscuous_enable(0);
   WiFi.disconnect();
   wifi_set_promiscuous_rx_cb(sniffer);
   wifi_set_channel(curChannel);
   wifi_promiscuous_enable(1);
-
-  pinMode(ledPin, OUTPUT);
   
-  Serial.println("starting!");
+  Serial.println("LED Pin setup");
+  pinMode(ledPin, OUTPUT);
+
+  Serial.println("Initializing OLED display");
+  display.init();
+  display.flipScreenVertically();
+  display.setFont(ArialMT_Plain_10);
+  
+  Serial.println("Initialized...");
 
 }
 
@@ -61,15 +74,29 @@ void loop() {
   curTime = millis();
   
   if(curTime - prevTime >= scanTime){
+
+    display.clear();
+    display.setFont(ArialMT_Plain_10);
+    display.setTextAlignment(TEXT_ALIGN_LEFT);
+    display.drawString(0, 0, "DeAuth attack detector");
+    display.drawString(25, 52, "Scanning channel: " + String(curChannel));
+    
     prevTime = curTime;
     Serial.println((String)c);
-    
+
+    display.setFont(ArialMT_Plain_24);
     if(c >= packetRate){
+      // Attack detected
       if(inverted) digitalWrite(ledPin, LOW);
       else digitalWrite(ledPin, HIGH);
+      display.drawString(35, 20, "DeAuth!");
+      display.drawXbm(5, 20, Exclamation_width, Exclamation_height, Exclamation_bits);
     }else{
+      // No attack
       if(inverted) digitalWrite(ledPin, HIGH);
       else digitalWrite(ledPin, LOW);
+      display.drawString(35, 20, "All clear");
+      display.drawXbm(5, 20, Check_width, Check_height, Check_bits);
     }
     
     c = 0;
@@ -78,6 +105,8 @@ void loop() {
       if(curChannel > maxChannel) curChannel = 1;
       wifi_set_channel(curChannel);
     }
+
+    display.display();
   }
 
 }
